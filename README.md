@@ -58,7 +58,51 @@ The application will start at:
 
 ---
 
-## 3. Database & Local Persistence
+## 3. Project Structure
+
+The codebase is organized into dedicated `frontend` and `backend` directories:
+
+```
+├── backend/
+│   ├── db/
+│   │   ├── database.ts        # Disk-persisted JSON database engine
+│   │   └── seedData.ts        # Indian MSME seed dataset & initializer
+│   ├── routes/
+│   │   └── api.ts             # REST API router (discovery, swipes, RFQs, etc.)
+│   └── server.ts              # Express API server & Vite middleware mount
+│
+├── frontend/
+│   ├── index.html             # Single-page application entry HTML
+│   └── src/
+│       ├── api/
+│       │   └── client.ts      # Typed REST API client
+│       ├── components/
+│       │   ├── common/        # Trust badges, capacity progress bar, etc.
+│       │   ├── discovery/     # Tinder-style supplier card stack & modals
+│       │   ├── manufacturer/  # MSME inbound demand dashboard & catalog
+│       │   ├── matches/       # Mutual connection celebration & chat
+│       │   ├── procurement/   # AI procurement comparison assistant
+│       │   └── shortlist/     # Saved supplier matrix & comparison table
+│       ├── context/
+│       │   └── AppContext.tsx # Central frontend state connected to backend
+│       ├── data/
+│       │   └── mockSuppliers.ts
+│       ├── types/
+│       │   └── index.ts
+│       ├── App.tsx
+│       ├── index.css          # Industrial Precision Tailwind CSS theme
+│       └── main.tsx
+│
+├── data/
+│   └── sourcingo.db.json      # Persistent local database file
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
+```
+
+---
+
+## 4. Database & Local Persistence
 
 Sourcingo uses a persistent disk-backed database located at:
 `data/sourcingo.db.json`
