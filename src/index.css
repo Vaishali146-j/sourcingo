@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --navy-primary: #14283F;
+    --navy-dark: #0A1624;
+    --navy-light: #1E3A5B;
+    --porcelain-bg: #F5F7FA;
+    --surface-white: #FFFFFF;
+    --signal-amber: #F59E0B;
+    --signal-amber-hover: #D97706;
+    --industrial-teal: #0F766E;
+    --industrial-teal-light: #F0FDFA;
+    --industrial-teal-border: #99F6E4;
+    --text-primary: #172033;
+    --text-secondary: #64748B;
+    --border-subtle: #E2E8F0;
+    --destructive-red: #DC2626;
+    --success-green: #15803D;
+    --warning-amber: #B45309;
+  }
+
+  body {
+    background-color: var(--porcelain-bg);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom scrollbars for industrial density views */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Glass & elevated surface utility */
+.card-elevation {
+  box-shadow: 0 4px 20px -2px rgba(20, 40, 63, 0.07), 0 2px 6px -1px rgba(20, 40, 63, 0.04);
+}
+
+.card-elevation-lg {
+  box-shadow: 0 12px 32px -4px rgba(20, 40, 63, 0.12), 0 4px 12px -2px rgba(20, 40, 63, 0.06);
+}

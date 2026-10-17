@@ -1,0 +1,7 @@
+{
+  "name": "Sourcingo - B2B Industrial Sourcing & Matchmaking",
+  "description": "Premium B2B matchmaking marketplace connecting Indian MSME manufacturers with industrial buyers through Tinder-style discovery and explainable AI procurement.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
