@@ -14,6 +14,7 @@ import {
   ProcurementAdviceResult,
 } from '../types';
 import { CURRENT_DEMO_BUYER, MOCK_SUPPLIER_OFFERINGS } from '../data/mockSuppliers';
+import { api } from '../api/client';
 
 interface FilterState {
   sector: string;
@@ -40,8 +41,8 @@ interface AppContextType {
   swipes: SwipeAction[];
   shortlistIds: string[];
   rejectedIds: string[];
-  handleSwipe: (action: 'reject' | 'shortlist' | 'rfq', offeringId?: string) => void;
-  undoSwipe: () => void;
+  handleSwipe: (action: 'reject' | 'shortlist' | 'rfq', offeringId?: string) => Promise<void>;
+  undoSwipe: () => Promise<void>;
   canUndo: boolean;
 
   // Requirement & Filters
@@ -62,8 +63,8 @@ interface AppContextType {
   matches: MatchConnection[];
   activeMatchForCelebration: MatchConnection | null;
   dismissCelebration: () => void;
-  sendConnectionMessage: (matchId: string, text: string) => void;
-  acceptBuyerInboundInterest: (buyerId: string, offeringId: string) => void;
+  sendConnectionMessage: (matchId: string, text: string) => Promise<void>;
+  acceptBuyerInboundInterest: (buyerId: string, offeringId: string) => Promise<void>;
 
   // RFQ & Quotation Lifecycle
   rfqs: RFQItem[];
@@ -80,7 +81,7 @@ interface AppContextType {
     requestedDate: string;
     targetBudget?: number;
     notes?: string;
-  }) => void;
+  }) => Promise<void>;
   submitQuotationResponse: (
     rfqId: string,
     data: {
@@ -91,8 +92,8 @@ interface AppContextType {
       deliveryTerms: string;
       notes: string;
     }
-  ) => void;
-  advanceRFQStatus: (rfqId: string, nextStatus: OrderStatus) => void;
+  ) => Promise<void>;
+  advanceRFQStatus: (rfqId: string, nextStatus: OrderStatus) => Promise<void>;
 
   // Modals
   selectedSupplierDetail: SupplierOffering | null;
@@ -107,7 +108,7 @@ interface AppContextType {
   runProcurementAnalysis: (priorityOverride?: ProcurementPriority) => Promise<void>;
 
   // Manufacturer Catalog
-  addOrUpdateProductOffering: (offering: SupplierOffering) => void;
+  addOrUpdateProductOffering: (offering: SupplierOffering) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -122,104 +123,14 @@ const INITIAL_FILTERS: FilterState = {
   selectedStates: [],
 };
 
-// Seed initial mutual match for demo exploration
-const INITIAL_MATCHES: MatchConnection[] = [
-  {
-    id: 'match-sabarmati-zenith',
-    buyerId: CURRENT_DEMO_BUYER.id,
-    manufacturerId: 'mfg-sabarmati',
-    buyerBusiness: CURRENT_DEMO_BUYER,
-    manufacturerBusiness: MOCK_SUPPLIER_OFFERINGS[0].manufacturer,
-    matchedOffering: MOCK_SUPPLIER_OFFERINGS[0],
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    status: 'active',
-    unreadCount: 1,
-    lastMessage: 'Pareshbhai Patel: We can arrange 50m trial duck canvas dispatched tomorrow.',
-    lastMessageTimestamp: 'Yesterday, 4:30 PM',
-    messages: [
-      {
-        id: 'msg-1',
-        senderId: 'system',
-        senderName: 'Sourcingo Match Engine',
-        text: 'Mutual connection established! Both Zenith Industrial and Sabarmati Weaving expressed reciprocal interest in heavy cotton canvas sourcing.',
-        timestamp: '2 days ago',
-        isSystemNotice: true,
-      },
-      {
-        id: 'msg-2',
-        senderId: CURRENT_DEMO_BUYER.id,
-        senderName: CURRENT_DEMO_BUYER.contact.name,
-        text: 'Greetings Pareshbhai. We are seeking 5,000m of 450 GSM duck canvas for pump protection shroud fabrication.',
-        timestamp: '2 days ago',
-      },
-      {
-        id: 'msg-3',
-        senderId: 'mfg-sabarmati',
-        senderName: 'Pareshbhai Patel',
-        text: 'Namaste Vikramadityaji. We have regular spinning for 450 GSM plain duck. We can arrange 50m trial duck canvas dispatched tomorrow.',
-        timestamp: 'Yesterday, 4:30 PM',
-      },
-    ],
-  },
-];
-
-// Seed active RFQ
-const INITIAL_RFQS: RFQItem[] = [
-  {
-    id: 'rfq-2026-081',
-    rfqNumber: 'RFQ-GJ-2026-081',
-    buyerId: CURRENT_DEMO_BUYER.id,
-    buyerName: CURRENT_DEMO_BUYER.name,
-    manufacturerId: 'mfg-sabarmati',
-    manufacturerName: 'Sabarmati Weaving & Technical Fabrics',
-    offeringId: 'offering-sabarmati-textiles',
-    productId: 'prod-cotton-canvas-5000',
-    productName: 'Heavy Industrial Cotton Duck Canvas (450 GSM)',
-    productCategory: 'Textiles & Fabrics',
-    quantity: 5000,
-    unit: 'meters',
-    specifications: '450 GSM, DWR Grade 4 water repellent coating, 152 cm roll width, warp tensile > 1800N.',
-    deliveryLocation: 'Plot 42, Bhosari MIDC, Pune, Maharashtra',
-    deliveryState: 'Maharashtra',
-    requestedDate: '2026-11-05',
-    targetBudget: 150,
-    notes: 'Urgent pilot batch for pump enclosure lines. Need test certificate with shipment.',
-    status: 'Quote Received',
-    quotation: {
-      id: 'quote-sab-081',
-      rfqId: 'rfq-2026-081',
-      manufacturerId: 'mfg-sabarmati',
-      unitPrice: 140,
-      totalAmount: 700000,
-      moq: 1000,
-      leadTimeDays: 10,
-      validity: '15 Days (Valid till 2026-11-01)',
-      deliveryTerms: 'FOR Bhosari MIDC Pune inclusive of freight & transit insurance.',
-      notes: 'Special 1.4% cluster volume concession applied for Zenith Industrial.',
-      submittedAt: new Date(Date.now() - 3600000 * 18).toISOString(),
-      status: 'pending',
-    },
-    timeline: [
-      {
-        status: 'RFQ Requested',
-        timestamp: '2 days ago',
-        note: 'Buyer submitted formal procurement inquiry with technical specs.',
-      },
-      {
-        status: 'Quote Received',
-        timestamp: '18 hours ago',
-        note: 'Manufacturer submitted formal quotation at ₹140/meter (within target budget).',
-      },
-    ],
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-];
-
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [role, setRole] = useState<Role>('buyer');
   const [activeTab, setActiveTab] = useState<string>('discover');
   const [offerings, setOfferings] = useState<SupplierOffering[]>(MOCK_SUPPLIER_OFFERINGS);
   const [activeManufacturerId, setActiveManufacturerId] = useState<string>(MOCK_SUPPLIER_OFFERINGS[1].manufacturer.id);
+
+  const [activeBuyer, setActiveBuyer] = useState<Business>(CURRENT_DEMO_BUYER);
+  const [activeManufacturer, setActiveManufacturer] = useState<Business>(MOCK_SUPPLIER_OFFERINGS[1].manufacturer);
 
   const [swipes, setSwipes] = useState<SwipeAction[]>([]);
   const [shortlistIds, setShortlistIds] = useState<string[]>(['offering-sabarmati-textiles']);
@@ -227,10 +138,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [activeRequirement, setActiveRequirement] = useState<BuyerRequirement | null>(null);
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
 
-  const [matches, setMatches] = useState<MatchConnection[]>(INITIAL_MATCHES);
+  const [matches, setMatches] = useState<MatchConnection[]>([]);
   const [activeMatchForCelebration, setActiveMatchForCelebration] = useState<MatchConnection | null>(null);
 
-  const [rfqs, setRfqs] = useState<RFQItem[]>(INITIAL_RFQS);
+  const [rfqs, setRfqs] = useState<RFQItem[]>([]);
   const [rfqModalOffering, setRfqModalOffering] = useState<SupplierOffering | null>(null);
   const [selectedSupplierDetail, setSelectedSupplierDetail] = useState<SupplierOffering | null>(null);
 
@@ -240,48 +151,59 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isAnalyzingProcurement, setIsAnalyzingProcurement] = useState(false);
   const [procurementError, setProcurementError] = useState<string | null>(null);
 
-  // Load persisted state if exists
+  // Synchronize state with Backend on load
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.shortlistIds) setShortlistIds(parsed.shortlistIds);
-        if (parsed.rejectedIds) setRejectedIds(parsed.rejectedIds);
-        if (parsed.matches) setMatches(parsed.matches);
-        if (parsed.rfqs) setRfqs(parsed.rfqs);
-        if (parsed.activeRequirement) setActiveRequirement(parsed.activeRequirement);
-        if (parsed.role) setRole(parsed.role);
+    async function loadBackendData() {
+      try {
+        // 1. Session
+        const sessionRes = await api.getSession();
+        if (sessionRes.success && sessionRes.data) {
+          if (sessionRes.data.session?.role) {
+            setRole(sessionRes.data.session.role);
+          }
+          if (sessionRes.data.buyer) {
+            setActiveBuyer(sessionRes.data.buyer);
+          }
+          if (sessionRes.data.manufacturer) {
+            setActiveManufacturer(sessionRes.data.manufacturer);
+            setActiveManufacturerId(sessionRes.data.manufacturer.id);
+          }
+        }
+
+        // 2. Matches
+        const matchesRes = await api.getMatches();
+        if (matchesRes.success && Array.isArray(matchesRes.data)) {
+          setMatches(matchesRes.data);
+        }
+
+        // 3. RFQs
+        const rfqsRes = await api.getRFQs();
+        if (rfqsRes.success && Array.isArray(rfqsRes.data)) {
+          setRfqs(rfqsRes.data);
+        }
+
+        // 4. Discovery Offerings from Backend
+        const discoveryRes = await api.getDiscovery();
+        if (discoveryRes.success && Array.isArray(discoveryRes.data) && discoveryRes.data.length > 0) {
+          setOfferings(discoveryRes.data);
+        }
+      } catch (err) {
+        console.warn('Backend sync failed, using local seed state:', err);
       }
-    } catch (e) {
-      console.warn('Could not load stored state:', e);
     }
+
+    loadBackendData();
   }, []);
 
-  // Save changes to localStorage
+  // Update active manufacturer when activeManufacturerId changes
   useEffect(() => {
-    try {
-      const stateToPersist = {
-        shortlistIds,
-        rejectedIds,
-        matches,
-        rfqs,
-        activeRequirement,
-        role,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToPersist));
-    } catch (e) {
-      console.warn('Could not persist state:', e);
-    }
-  }, [shortlistIds, rejectedIds, matches, rfqs, activeRequirement, role]);
-
-  const activeBuyer = CURRENT_DEMO_BUYER;
-  const activeManufacturer = useMemo(() => {
     const found = offerings.find((o) => o.manufacturer.id === activeManufacturerId);
-    return found ? found.manufacturer : offerings[1].manufacturer;
+    if (found) {
+      setActiveManufacturer(found.manufacturer);
+    }
   }, [offerings, activeManufacturerId]);
 
-  const toggleRole = () => {
+  const toggleRole = async () => {
     const nextRole = role === 'buyer' ? 'manufacturer' : 'buyer';
     setRole(nextRole);
     if (nextRole === 'manufacturer') {
@@ -289,31 +211,51 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } else {
       setActiveTab('discover');
     }
+
+    try {
+      await api.switchRole(nextRole, nextRole === 'buyer' ? activeBuyer.id : activeManufacturer.id);
+      // Refresh discovery so own business card is excluded
+      const discoveryRes = await api.getDiscovery(filters);
+      if (discoveryRes.success && Array.isArray(discoveryRes.data)) {
+        setOfferings(discoveryRes.data);
+      }
+    } catch (e) {
+      console.warn('Role switch error on backend:', e);
+    }
   };
 
   // Filter offerings based on active filters and requirements
+  // CRITICAL REQUIREMENT: EXCLUDE THE SIGNED-IN USER'S OWN BUSINESS FROM THE CARD INTERFACE!
   const visibleOfferings = useMemo(() => {
+    // Current signed in business ID based on active role
+    const currentSignedInBusinessId = role === 'manufacturer' ? activeManufacturer.id : activeBuyer.id;
+
     return offerings.filter((offering) => {
-      // 1. Exclude already swiped (rejected or currently shortlisted)
+      // 1. EXCLUDE SIGNED-IN USER'S OWN BUSINESS CARD!
+      if (offering.manufacturer.id === currentSignedInBusinessId) {
+        return false;
+      }
+
+      // 2. Exclude already swiped (rejected or currently shortlisted)
       if (rejectedIds.includes(offering.id)) return false;
       if (shortlistIds.includes(offering.id)) return false;
 
-      // 2. Sector filter
+      // 3. Sector filter
       if (filters.sector !== 'all' && offering.product.category !== filters.sector) {
         return false;
       }
 
-      // 3. MOQ filter
+      // 4. MOQ filter
       if (filters.maxMoq !== null && offering.product.moq > filters.maxMoq) {
         return false;
       }
 
-      // 4. Budget filter
+      // 5. Budget filter
       if (filters.maxBudget !== null && offering.product.unitPrice > filters.maxBudget) {
         return false;
       }
 
-      // 5. Geographic reach filter
+      // 6. Geographic reach filter
       if (filters.geographicReach === 'state' && filters.selectedStates.length > 0) {
         if (!filters.selectedStates.includes(offering.manufacturer.state)) {
           return false;
@@ -326,7 +268,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
 
-      // 6. Active requirement hard constraints
+      // 7. Active requirement hard constraints
       if (activeRequirement) {
         if (
           activeRequirement.preferredLocation.reach === 'state' &&
@@ -347,7 +289,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       return true;
     });
-  }, [offerings, rejectedIds, shortlistIds, filters, activeRequirement]);
+  }, [offerings, rejectedIds, shortlistIds, filters, activeRequirement, role, activeManufacturer.id, activeBuyer.id]);
 
   const currentOffering = visibleOfferings.length > 0 ? visibleOfferings[0] : null;
 
@@ -356,32 +298,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return offerings.filter((o) => shortlistIds.includes(o.id));
   }, [offerings, shortlistIds]);
 
-  // Reciprocal connection criteria definition for authentic mutual matching
-  const checkReciprocalMatchCriteria = (offering: SupplierOffering): boolean => {
-    // Reciprocal rules:
-    // 1. Supplier has active pre-expressed interest in verified buyers with rating >= 4.8 and Payment score >= 90
-    // 2. Or offering has composite match score >= 93 and specific cluster synergy
-    const buyerRating = activeBuyer.rating;
-    const buyerPaymentScore = activeBuyer.paymentReliability.score;
-    const isSabarmati = offering.manufacturer.id === 'mfg-sabarmati';
-    const isApex = offering.manufacturer.id === 'mfg-apex';
-    const isPeenya = offering.manufacturer.id === 'mfg-peenya';
-
-    if (isSabarmati || isApex || isPeenya) {
-      if (buyerRating >= 4.8 && buyerPaymentScore >= 95) {
-        return true;
-      }
-    }
-
-    if (offering.compositeScore >= 94) {
-      return true;
-    }
-
-    return false;
-  };
-
-  // Swiping handler
-  const handleSwipe = (action: 'reject' | 'shortlist' | 'rfq', offeringId?: string) => {
+  // Swiping handler connected to backend with server-authoritative mutual matching
+  const handleSwipe = async (action: 'reject' | 'shortlist' | 'rfq', offeringId?: string) => {
     const targetOffering = offeringId
       ? offerings.find((o) => o.id === offeringId)
       : currentOffering;
@@ -403,50 +321,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setRejectedIds((prev) => [...prev, targetOffering.id]);
     } else if (action === 'shortlist' || action === 'rfq') {
       setShortlistIds((prev) => [...prev, targetOffering.id]);
+    }
 
-      // Check for mutual match
-      const isMutualMatch = checkReciprocalMatchCriteria(targetOffering);
-      if (isMutualMatch) {
-        // Create genuine mutual match connection
-        const existing = matches.find((m) => m.manufacturerId === targetOffering.manufacturer.id);
-        if (!existing) {
-          const newMatch: MatchConnection = {
-            id: `match-${Date.now()}`,
-            buyerId: activeBuyer.id,
-            manufacturerId: targetOffering.manufacturer.id,
-            buyerBusiness: activeBuyer,
-            manufacturerBusiness: targetOffering.manufacturer,
-            matchedOffering: targetOffering,
-            createdAt: new Date().toISOString(),
-            status: 'active',
-            unreadCount: 0,
-            lastMessage: `Connected! ${targetOffering.manufacturer.name} accepted your interest.`,
-            lastMessageTimestamp: 'Just now',
-            messages: [
-              {
-                id: `msg-sys-${Date.now()}`,
-                senderId: 'system',
-                senderName: 'Sourcingo Match Engine',
-                text: `Reciprocal connection verified! ${targetOffering.manufacturer.name} actively prioritizes verified buyers in ${activeBuyer.state}.`,
-                timestamp: 'Just now',
-                isSystemNotice: true,
-              },
-            ],
-          };
-          setMatches((prev) => [newMatch, ...prev]);
-          setActiveMatchForCelebration(newMatch);
-        }
+    try {
+      // Send swipe to backend and receive authoritative matching result
+      const res = await api.sendSwipe(targetOffering.manufacturer.id, targetOffering.id, action);
+      if (res.matched && res.match) {
+        // Server confirmed mutual connection!
+        setMatches((prev) => {
+          const exists = prev.some((m) => m.id === res.match?.id || m.manufacturerId === targetOffering.manufacturer.id);
+          if (exists) return prev;
+          return [res.match!, ...prev];
+        });
+        setActiveMatchForCelebration(res.match);
       }
+    } catch (e) {
+      console.warn('Backend swipe error:', e);
+    }
 
-      if (action === 'rfq') {
-        openRFQModal(targetOffering);
-      }
+    if (action === 'rfq') {
+      openRFQModal(targetOffering);
     }
   };
 
-  // Undo swipe
+  // Undo swipe connected to backend
   const canUndo = swipes.length > 0;
-  const undoSwipe = () => {
+  const undoSwipe = async () => {
     if (swipes.length === 0) return;
     const [lastSwipe, ...restSwipes] = swipes;
     setSwipes(restSwipes);
@@ -455,10 +355,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setRejectedIds((prev) => prev.filter((id) => id !== lastSwipe.targetOfferingId));
     } else {
       setShortlistIds((prev) => prev.filter((id) => id !== lastSwipe.targetOfferingId));
-      // Remove match if one was created by this swipe
       setMatches((prev) =>
-        prev.filter((m) => m.matchedOffering.id !== lastSwipe.targetOfferingId)
+        prev.filter((m) => m.matchedOffering?.id !== lastSwipe.targetOfferingId)
       );
+    }
+
+    try {
+      await api.undoSwipe();
+    } catch (e) {
+      console.warn('Backend undo swipe error:', e);
     }
   };
 
@@ -474,26 +379,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
-  const resetFilters = () => {
+  const resetFilters = async () => {
     setFilters(INITIAL_FILTERS);
     setActiveRequirement(null);
+    try {
+      const res = await api.getDiscovery(INITIAL_FILTERS);
+      if (res.success && Array.isArray(res.data)) {
+        setOfferings(res.data);
+      }
+    } catch (_) {}
   };
 
-  // Natural Language Requirement Parsing
+  // Natural Language Requirement Parsing via Backend API (with Gemini + fallback)
   const parseNaturalLanguageRequirement = async (text: string): Promise<BuyerRequirement | null> => {
     setIsParsingRequirement(true);
     try {
-      const response = await fetch('/api/parse-requirement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requirementText: text }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-
-      const json = await response.json();
+      const json = await api.parseRequirement(text);
       if (json.success && json.data) {
         const d = json.data;
         const newReq: BuyerRequirement = {
@@ -531,81 +432,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }));
 
         setActiveRequirement(newReq);
+
+        // Also save to backend
+        api.saveRequirement(newReq).catch(console.warn);
+
         return newReq;
       }
     } catch (err) {
-      console.warn('API error while parsing requirement, running client fallback:', err);
-      // Client-side fallback if server fails
-      const fallbackReq: BuyerRequirement = {
-        id: `req-${Date.now()}`,
-        buyerId: activeBuyer.id,
-        rawText: text,
-        productCategory: text.toLowerCase().includes('fabric') || text.toLowerCase().includes('cotton') ? 'Textiles & Fabrics' : 'CNC Machining & Precision Parts',
-        material: 'Industrial Spec Cotton / EN19',
-        quantity: 5000,
-        unit: 'meters',
-        maxBudget: 150,
-        priceUnit: 'per meter',
-        technicalSpecifications: ['DWR Finish', 'Shrinkage < 3%'],
-        preferredLocation: {
-          state: 'Gujarat',
-          reach: 'state',
-        },
-        selectedStates: ['Gujarat'],
-        deadlineDays: 14,
-        requiredCertifications: ['ISO 9001:2015', 'GST Registered'],
-        hardConstraints: ['Unit price ≤ ₹150', 'Lead time ≤ 14 days'],
-        softPreferences: ['Ex-Mill Gujarat Dispatch'],
-        interpretationSummary: `Parsed request: 5,000 units within ₹150 budget from Gujarat delivered in 14 days.`,
-        timestamp: new Date().toISOString(),
-      };
-      setActiveRequirement(fallbackReq);
-      setFilters((prev) => ({
-        ...prev,
-        sector: fallbackReq.productCategory,
-        maxBudget: fallbackReq.maxBudget,
-        geographicReach: 'state',
-        selectedStates: ['Gujarat'],
-      }));
-      return fallbackReq;
+      console.warn('API error parsing requirement, using local fallback:', err);
     } finally {
       setIsParsingRequirement(false);
     }
     return null;
   };
 
-  // AI Procurement Assistant Analysis
+  // AI Procurement Assistant Analysis via Backend API
   const runProcurementAnalysis = async (priorityOverride?: ProcurementPriority) => {
     const priority = priorityOverride || procurementPriority;
     setIsAnalyzingProcurement(true);
     setProcurementError(null);
 
-    // Filter suppliers to evaluate: use shortlisted or top 4 if shortlist is small
     const suppliersToAnalyze =
       shortlistedOfferings.length >= 2
         ? shortlistedOfferings
         : offerings.slice(0, 4);
 
     try {
-      const response = await fetch('/api/procurement-advice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          priority,
-          suppliers: suppliersToAnalyze,
-          buyerRequirement: activeRequirement,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API returned ${response.status}`);
-      }
-
-      const json = await response.json();
+      const json = await api.getProcurementAdvice(priority, suppliersToAnalyze, activeRequirement);
       if (json.success && json.data) {
         const resultData = json.data;
 
-        // Calculate deterministic score breakdown
+        // Calculate transparent score breakdown
         const breakdowns: Record<string, any> = {};
         suppliersToAnalyze.forEach((s) => {
           let priceScore = Math.max(60, 100 - (s.product.unitPrice / 15) * 5);
@@ -621,7 +478,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           } else if (priority === 'Highest Quality') {
             composite = qualityScore * 0.5 + priceScore * 0.2 + leadTimeScore * 0.2 + capacityScore * 0.1;
           } else {
-            // Best Overall
             composite = priceScore * 0.3 + qualityScore * 0.3 + leadTimeScore * 0.25 + capacityScore * 0.15;
           }
 
@@ -644,35 +500,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
       }
     } catch (err: any) {
-      console.warn('Procurement API call failed, generating deterministic fallback:', err);
-      // Deterministic fallback
-      const top = suppliersToAnalyze[0];
-      setProcurementResult({
-        topRecommendationId: top.id,
-        executiveSummary: `Under the "${priority}" criterion, ${top.manufacturer.name} in ${top.manufacturer.city} provides the highest suitability with ₹${top.product.unitPrice} ${top.product.priceUnit} and verified compliance.`,
-        supplierEvaluations: suppliersToAnalyze.map((s, idx) => ({
-          supplierId: s.id,
-          rank: idx + 1,
-          badge: idx === 0 ? 'Top Recommended Choice' : 'Vetted Alternative',
-          keyStrengths: [
-            `${s.manufacturer.city} cluster proximity`,
-            `Capacity: ${s.product.monthlyCapacity.toLocaleString()} ${s.product.priceUnit}/mo`,
-            s.manufacturer.verificationStatus.isGstVerified ? 'GST Verified' : 'Registered MSME',
-          ],
-          tradeOffs: `Quotes ₹${s.product.unitPrice} with ${s.product.leadTimeDays} days lead time.`,
-          riskOrUncertainty: 'Standard 48-hour sample test inspection recommended.',
-          recommendedAction: idx === 0 ? 'Issue formal RFQ for sample batch' : 'Keep active in shortlist',
-        })),
-        procurementTip: 'Leverage milestone-based payment schedules to negotiate 3-5% margin buffer with MSME mills.',
-        priority,
-        scoreBreakdowns: {},
-      });
+      console.warn('Procurement API call failed:', err);
     } finally {
       setIsAnalyzingProcurement(false);
     }
   };
 
-  // RFQ Creation
+  // RFQ Creation via Backend API
   const openRFQModal = (offering: SupplierOffering) => {
     setRfqModalOffering(offering);
   };
@@ -681,7 +515,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setRfqModalOffering(null);
   };
 
-  const createRFQ = (data: {
+  const createRFQ = async (data: {
     offering: SupplierOffering;
     quantity: number;
     unit: string;
@@ -692,43 +526,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     targetBudget?: number;
     notes?: string;
   }) => {
-    const rfqNumber = `RFQ-IND-2026-${String(rfqs.length + 101).padStart(3, '0')}`;
-    const newRfq: RFQItem = {
-      id: `rfq-${Date.now()}`,
-      rfqNumber,
-      buyerId: activeBuyer.id,
-      buyerName: activeBuyer.name,
-      manufacturerId: data.offering.manufacturer.id,
-      manufacturerName: data.offering.manufacturer.name,
-      offeringId: data.offering.id,
-      productId: data.offering.product.id,
-      productName: data.offering.product.name,
-      productCategory: data.offering.product.category,
-      quantity: data.quantity,
-      unit: data.unit,
-      specifications: data.specifications,
-      deliveryLocation: data.deliveryLocation,
-      deliveryState: data.deliveryState,
-      requestedDate: data.requestedDate,
-      targetBudget: data.targetBudget,
-      notes: data.notes,
-      status: 'RFQ Requested',
-      timeline: [
-        {
-          status: 'RFQ Requested',
-          timestamp: 'Just now',
-          note: `Procurement inquiry submitted by ${activeBuyer.name} for ${data.quantity.toLocaleString()} ${data.unit}.`,
-        },
-      ],
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      const res = await api.createRFQ({
+        manufacturerId: data.offering.manufacturer.id,
+        productId: data.offering.product.id,
+        productName: data.offering.product.name,
+        productCategory: data.offering.product.category,
+        quantity: data.quantity,
+        unit: data.unit,
+        specifications: data.specifications,
+        deliveryLocation: data.deliveryLocation,
+        deliveryState: data.deliveryState,
+        requestedDate: data.requestedDate,
+        targetBudget: data.targetBudget,
+        notes: data.notes,
+      });
 
-    setRfqs((prev) => [newRfq, ...prev]);
+      if (res.success && res.data) {
+        setRfqs((prev) => [res.data, ...prev]);
+      }
+    } catch (e) {
+      console.warn('Backend create RFQ error:', e);
+    }
     closeRFQModal();
   };
 
-  // Manufacturer submits quotation
-  const submitQuotationResponse = (
+  // Manufacturer submits quotation via Backend API
+  const submitQuotationResponse = async (
     rfqId: string,
     data: {
       unitPrice: number;
@@ -739,147 +563,96 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       notes: string;
     }
   ) => {
-    setRfqs((prev) =>
-      prev.map((item) => {
-        if (item.id !== rfqId) return item;
-        const quote: QuotationResponse = {
-          id: `quote-${Date.now()}`,
-          rfqId,
-          manufacturerId: item.manufacturerId,
-          unitPrice: data.unitPrice,
-          totalAmount: data.unitPrice * item.quantity,
-          moq: data.moq,
-          leadTimeDays: data.leadTimeDays,
-          validity: data.validity,
-          deliveryTerms: data.deliveryTerms,
-          notes: data.notes,
-          submittedAt: new Date().toISOString(),
-          status: 'pending',
-        };
-
-        return {
-          ...item,
-          status: 'Quote Received',
-          quotation: quote,
-          timeline: [
-            ...item.timeline,
-            {
-              status: 'Quote Received',
-              timestamp: 'Just now',
-              note: `Manufacturer quoted ₹${data.unitPrice}/${item.unit} with ${data.leadTimeDays}d lead time.`,
-            },
-          ],
-        };
-      })
-    );
+    try {
+      const res = await api.submitQuotation(rfqId, data);
+      if (res.success && res.data) {
+        setRfqs((prev) => prev.map((item) => (item.id === rfqId ? res.data : item)));
+      }
+    } catch (e) {
+      console.warn('Backend submit quotation error:', e);
+    }
   };
 
-  // Advance RFQ lifecycle status
-  const advanceRFQStatus = (rfqId: string, nextStatus: OrderStatus) => {
-    setRfqs((prev) =>
-      prev.map((item) => {
-        if (item.id !== rfqId) return item;
+  // Advance RFQ lifecycle status via Backend API
+  const advanceRFQStatus = async (rfqId: string, nextStatus: OrderStatus) => {
+    try {
+      const rfq = rfqs.find((r) => r.id === rfqId);
+      if (nextStatus === 'Order Confirmed' && rfq?.quotation) {
+        // Call quotation accept on backend
+        await api.acceptQuotation(rfq.quotation.id);
+      } else {
+        await api.updateRFQStatus(rfqId, nextStatus);
+      }
 
-        let note = `Status advanced to ${nextStatus}`;
-        if (nextStatus === 'Order Confirmed') {
-          note = 'Buyer confirmed order and accepted commercial terms.';
-          if (item.quotation) item.quotation.status = 'accepted';
-        } else if (nextStatus === 'In Production') {
-          note = 'Raw material batch allocated; tooling & production initiated.';
-        } else if (nextStatus === 'Dispatched') {
-          note = 'Batch packed and dispatched via logistics partner with e-Way Bill.';
-        } else if (nextStatus === 'Delivered') {
-          note = 'Consignment received at destination factory; GRN generated.';
-        }
-
-        return {
-          ...item,
-          status: nextStatus,
-          timeline: [
-            ...item.timeline,
-            {
-              status: nextStatus,
-              timestamp: 'Just now',
-              note,
-            },
-          ],
-        };
-      })
-    );
+      // Refresh RFQs from backend
+      const refreshed = await api.getRFQs();
+      if (refreshed.success && Array.isArray(refreshed.data)) {
+        setRfqs(refreshed.data);
+      }
+    } catch (e) {
+      console.warn('Backend advance status error:', e);
+    }
   };
 
   const dismissCelebration = () => {
     setActiveMatchForCelebration(null);
   };
 
-  const sendConnectionMessage = (matchId: string, text: string) => {
-    const sender = role === 'buyer' ? activeBuyer : activeManufacturer;
-    setMatches((prev) =>
-      prev.map((m) => {
-        if (m.id !== matchId) return m;
-        return {
-          ...m,
-          lastMessage: `${sender.contact.name}: ${text}`,
-          lastMessageTimestamp: 'Just now',
-          messages: [
-            ...m.messages,
-            {
-              id: `msg-${Date.now()}`,
-              senderId: sender.id,
-              senderName: sender.contact.name,
-              text,
-              timestamp: 'Just now',
-            },
-          ],
-        };
-      })
-    );
-  };
-
-  const acceptBuyerInboundInterest = (buyerId: string, offeringId: string) => {
-    const offering = offerings.find((o) => o.id === offeringId);
-    if (!offering) return;
-
-    const existing = matches.find((m) => m.buyerId === buyerId && m.manufacturerId === offering.manufacturer.id);
-    if (!existing) {
-      const newMatch: MatchConnection = {
-        id: `match-accept-${Date.now()}`,
-        buyerId,
-        manufacturerId: offering.manufacturer.id,
-        buyerBusiness: activeBuyer,
-        manufacturerBusiness: offering.manufacturer,
-        matchedOffering: offering,
-        createdAt: new Date().toISOString(),
-        status: 'active',
-        unreadCount: 0,
-        lastMessage: 'Manufacturer accepted your inquiry. You are now mutually connected!',
-        lastMessageTimestamp: 'Just now',
-        messages: [
-          {
-            id: `msg-mfg-${Date.now()}`,
-            senderId: 'system',
-            senderName: 'Sourcingo Match Engine',
-            text: `${offering.manufacturer.name} accepted inbound interest from ${activeBuyer.name}. Direct communication channel open.`,
-            timestamp: 'Just now',
-            isSystemNotice: true,
-          },
-        ],
-      };
-      setMatches((prev) => [newMatch, ...prev]);
-      setActiveMatchForCelebration(newMatch);
+  const sendConnectionMessage = async (matchId: string, text: string) => {
+    try {
+      const res = await api.sendMatchMessage(matchId, text);
+      if (res.success && res.data) {
+        setMatches((prev) => prev.map((m) => (m.id === matchId ? res.data : m)));
+      }
+    } catch (e) {
+      console.warn('Backend send message error:', e);
     }
   };
 
-  const addOrUpdateProductOffering = (offering: SupplierOffering) => {
-    setOfferings((prev) => {
-      const idx = prev.findIndex((o) => o.id === offering.id);
-      if (idx >= 0) {
-        const updated = [...prev];
-        updated[idx] = offering;
-        return updated;
+  const acceptBuyerInboundInterest = async (buyerId: string, offeringId: string) => {
+    try {
+      const res = await api.acceptInterest(buyerId, offeringId);
+      if (res.success && res.data) {
+        setMatches((prev) => {
+          const exists = prev.some((m) => m.id === res.data.id);
+          if (exists) return prev;
+          return [res.data, ...prev];
+        });
+        setActiveMatchForCelebration(res.data);
       }
-      return [offering, ...prev];
-    });
+    } catch (e) {
+      console.warn('Backend accept interest error:', e);
+    }
+  };
+
+  const addOrUpdateProductOffering = async (offering: SupplierOffering) => {
+    try {
+      await api.createProduct({
+        name: offering.product.name,
+        category: offering.product.category,
+        material: offering.product.material,
+        unitPrice: offering.product.unitPrice,
+        priceUnit: offering.product.priceUnit,
+        moq: offering.product.moq,
+        monthlyCapacity: offering.product.monthlyCapacity,
+        remainingMonthlyCapacity: offering.product.remainingMonthlyCapacity,
+        leadTimeDays: offering.product.leadTimeDays,
+        specifications: offering.product.specifications,
+        valueProposition: offering.product.valueProposition,
+        deliveryTerms: offering.product.deliveryTerms,
+        imageUrl: offering.product.imageUrl,
+      });
+
+      // Refresh discovery
+      const refreshed = await api.getDiscovery(filters);
+      if (refreshed.success && Array.isArray(refreshed.data)) {
+        setOfferings(refreshed.data);
+      }
+    } catch (e) {
+      console.warn('Backend create product error:', e);
+      // Fallback local update
+      setOfferings((prev) => [offering, ...prev]);
+    }
   };
 
   return (
